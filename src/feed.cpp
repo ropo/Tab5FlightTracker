@@ -100,6 +100,12 @@ const char *download() {
     if (client) {
         const auto rc = esp_http_client_perform(client);
         report.http = esp_http_client_get_status_code(client);
+        if (rc != ESP_OK) {
+            int tlsCode = 0, tlsFlags = 0;
+            esp_http_client_get_and_clear_last_tls_error(client, &tlsCode, &tlsFlags);
+            Serial.printf("ADS-B HTTPS: %s, errno=%d, TLS=%d, flags=%d\n",
+                          esp_err_to_name(rc), esp_http_client_get_errno(client), tlsCode, tlsFlags);
+        }
         if (body.overflow) error = "Feed exceeds memory limit";
         else if (rc == ESP_OK && report.http == 200) error = parseBody(body);
         else if (report.http == 429) error = "API rate limit";

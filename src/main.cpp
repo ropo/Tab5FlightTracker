@@ -29,10 +29,8 @@ void loop() {
     const Feed *result;
     if (takeFeed(result)) {
         fetching = false;
-        if (!demoMode) {
-            if (!result->error[0]) acceptFeed(*result);
-            else setFeedStatus(result->error);
-        }
+        if (!result->error[0]) acceptFeed(*result);
+        else setFeedStatus(result->error);
         waitMs = 1000UL * std::max(PollSeconds, result->retryAfter);
     }
     if (!demoMode && !fetching) {

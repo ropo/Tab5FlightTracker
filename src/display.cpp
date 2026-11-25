@@ -12,7 +12,9 @@ constexpr uint32_t Ink = 0xe2f2ef, Dim = 0x96b0b6, Cyan = 0x65ead6, Gold = 0xffc
 constexpr uint32_t Grid = 0x35595f, Card = 0x122630, Divider = 0x28414b;
 M5Canvas base(&M5.Display), scope(&M5.Display), panel(&M5.Display);
 bool ready, pinned, panelDirty = true;
-Aircraft planes[MaxAircraft];
+Aircraft livePlanes[MaxAircraft], demoPlanes[8];
+Aircraft *planes=livePlanes;
+int liveCount;
 int count, selected = -1, cachedRange, nearby[3]{-1,-1,-1};
 char statusText[64] = "Waiting for ADS-B";
 time_t observed;
@@ -242,9 +244,10 @@ void setFeedStatus(const char *message) {
 
 void setDemo(bool enabled) {
     if (demoMode==enabled) return;
-    demoMode=enabled; count=0; selected=-1; pinned=false; observed=0;
-    for(auto &p:planes) p=Aircraft{};
-    setFeedStatus("Waiting for ADS-B");
+    demoMode=enabled;
+    planes=enabled ? demoPlanes : livePlanes;
+    count=enabled ? 0 : liveCount;
+    selected=-1; pinned=false;
     panelDirty=true;
 }
 
@@ -252,13 +255,13 @@ void acceptFeed(const Feed &data) {
     if (observed && data.observed < observed) { setFeedStatus("Older feed ignored"); return; }
     static Aircraft next[MaxAircraft];
     char previous[10]{};
-    if (selected>=0) strlcpy(previous,planes[selected].hex,sizeof(previous));
+    if (!demoMode && selected>=0) strlcpy(previous,planes[selected].hex,sizeof(previous));
     int found=-1;
     for(int i=0;i<data.count;i++) {
         auto &a=next[i]; a=data.aircraft[i];
         if (!strcmp(previous,a.hex)) found=i;
-        for(int j=0;j<count;j++) if (!strcmp(a.hex,planes[j].hex)) {
-            const auto &old=planes[j];
+        for(int j=0;j<liveCount;j++) if (!strcmp(a.hex,livePlanes[j].hex)) {
+            const auto &old=livePlanes[j];
             if (difftime(data.observed,observed)<=2*PollSeconds+30) {
                 bool moved=hypotf(old.pos.east-a.pos.east,old.pos.north-a.pos.north)>.03f;
                 int start=moved && old.trailCount==5 ? 1 : 0;
@@ -268,9 +271,12 @@ void acceptFeed(const Feed &data) {
             break;
         }
     }
-    count=data.count;
-    std::copy_n(next,count,planes);
-    selected=found; if (!visible(selected)) { pinned=false; selected=-1; }
+    liveCount=data.count;
+    std::copy_n(next,liveCount,livePlanes);
+    if (!demoMode) {
+        count=liveCount; selected=found;
+        if (!visible(selected)) { pinned=false; selected=-1; }
+    }
     observed=data.observed;
     setFeedStatus("ADS-B received");
     panelDirty=true;
@@ -316,6 +322,6 @@ void describeRadar(JsonObject out) {
     out["mode"]=demoMode ? "demo" : "live";
     out["status"]=demoMode ? "Simulated traffic" : statusText;
     out["aircraft"]=count;
-    out["observed"]=observed;
+    out["observed"]=demoMode ? 0 : observed;
     out["frameMs"]=lastFrame;
 }
