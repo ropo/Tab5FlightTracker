@@ -37,3 +37,7 @@ pio run -e tab5 -t upload
 ```
 
 複数の機器がある場合は `pio device list` でTab5を確認し、`--upload-port` で指定してください。設定ページ、イラスト、地図はファームウェアに含まれます。
+
+## 設定ページの公開
+
+リポジトリの **Settings → Pages → Source** で **GitHub Actions** を選択します。**Actions → 設定ページを公開 → Run workflow** で公開すると、[USB設定ページ](https://ropo.github.io/Tab5FlightTracker/) を開けます。`master` の設定ページやイラストを更新すると自動で再公開します。

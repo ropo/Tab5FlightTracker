@@ -1,0 +1,40 @@
+name: 設定ページを公開
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - web/settings.html
+      - web/ropo-flight.jpg
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+concurrency:
+  group: github-pages
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/configure-pages@v5
+      - name: 公開用ファイルを用意
+        run: |
+          mkdir -p _site
+          cp web/settings.html _site/index.html
+          cp web/ropo-flight.jpg _site/ropo-flight.jpg
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - uses: actions/deploy-pages@v4
+        id: deployment

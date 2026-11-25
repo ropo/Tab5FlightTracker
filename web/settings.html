@@ -46,7 +46,8 @@ footer a:hover,footer a:focus-visible{text-decoration:underline;color:#74e3cf}
 <script>
 'use strict';
 const el = id => document.getElementById(id);
-const usb = location.protocol === 'file:' || ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
+const usb = ['file:','https:'].includes(location.protocol) ||
+  ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 const keys = ['brightness','range','cycle','sweep'];
 let port, reader, readTask, writeTask, pending, busy = false;
 const encoder = new TextEncoder();
