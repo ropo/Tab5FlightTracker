@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tab5 Flight Tracker 設定</title>
+<style>
+:root{color-scheme:dark;font:16px/1.65 "Segoe UI",sans-serif;color:#e2f1f3;background:#0b151d}
+body{max-width:38rem;margin:auto;padding:2rem 1rem}h1{font-size:1.7rem;line-height:1.2}h2{font-size:1.12rem;color:#6de5cf}
+section{border-top:1px solid #354852;padding:1rem 0}label{display:block;margin:.6rem 0}
+input,select,button{box-sizing:border-box;font:inherit;padding:.45rem .7rem;border:1px solid #47606a;border-radius:5px;background:#152630;color:inherit}
+input,select{width:100%}button{margin-top:.5rem;cursor:pointer;color:#092026;background:#74e3cf;font-weight:650}
+button:disabled{opacity:.45}fieldset{padding:0;border:0;margin:0}small,output{color:#afc4cb}a{color:#74e3cf}
+</style>
+<h1>Tab5 Flight Tracker</h1>
+<div id="connection"></div>
+<button type="button" id="connect" hidden>USBで接続</button>
+<p role="status" id="status"></p>
+<fieldset id="controls" disabled>
+<section><h2>レーダー表示</h2>
+<form id="displayForm">
+<label>明るさ <output id="percent"></output><input id="brightness" type="range" min="5" max="100"></label>
+<label>表示半径<select id="range"><option value="20">20 NM（約37 km）</option><option value="40">40 NM（約74 km）</option><option value="60">60 NM（約111 km）</option></select></label>
+<label>注目機の自動切替（秒）<input id="cycle" type="number" min="0" max="60" required></label><small>0で停止、5〜60秒で切り替えます。</small>
+<label>レーダーが一周する時間（秒）<input id="sweep" type="number" min="3" max="20" required></label>
+<button>表示設定を保存</button></form></section>
+<section id="wifi" hidden><h2>Wi-Fi 接続先</h2>
+<form id="wifiForm" autocomplete="off">
+<label>SSID<input id="ssid" required maxlength="32" autocapitalize="off" spellcheck="false"></label>
+<label>パスワード<input id="password" type="password" maxlength="63" autocomplete="new-password"></label>
+<small>2.4 GHzのアクセスポイントを指定してください。オープンネットワークでは空欄にします。</small><br>
+<button>Wi-Fiを保存して接続</button></form></section>
+</fieldset>
+<script>
+'use strict';
+const el = id => document.getElementById(id);
+const usb = location.protocol === 'file:' || ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
+const keys = ['brightness','range','cycle','sweep'];
+let port, reader, pending, busy = false;
+const encoder = new TextEncoder();
+function note(text) { el('status').textContent = text; }
+function network(r) {
+  el('connection').textContent = usb ? (r.connected ? 'USB 接続中　LAN設定画面　http://' + r.ip + '/' :
+    'USB 接続中　Wi-Fi 未接続') : 'Wi-Fi 経由で接続中';
+}
+function load(r) {
+  network(r);
+  for (const k of keys) el(k).value = r.settings[k];
+  el('percent').value = el('brightness').value + '%';
+  el('controls').disabled = false;
+}
+async function readLines() {
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    while (true) {
+      const {value,done} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value,{stream:true});
+      let end;
+      while ((end = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0,end); buffer = buffer.slice(end+1);
+        let r;
+        try { r = JSON.parse(line); } catch { continue; }
+        if (pending && typeof r.ok === 'boolean') pending(r);
+      }
+      if (buffer.length > 4096) buffer = '';
+    }
+  } catch (e) { note(e.message); }
+  finally {
+    if (pending) pending({ok:false,error:'USBが切断されました'});
+    reader.releaseLock();
+    try { await port.close(); } catch {}
+    port = null; el('controls').disabled = true; el('connect').disabled = false;
+    el('connection').textContent = 'USB 未接続';
+  }
+}
+async function request(msg) {
+  if (!usb) {
+    const r = msg.op === 'get' ? await fetch('/settings',{cache:'no-store'}) :
+      await fetch('/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(msg)});
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw Error(data.error || '通信エラー');
+    return data;
+  }
+  if (!port || busy) throw Error('USBの接続または応答を確認してください');
+  busy = true;
+  let timer, writer;
+  try {
+    writer = port.writable.getWriter();
+    const reply = new Promise(resolve => {
+      pending = resolve;
+      timer = setTimeout(() => resolve({ok:false,error:'USB応答タイムアウト'}),5000);
+    });
+    await writer.write(encoder.encode(JSON.stringify(msg)+'\n'));
+    const r = await reply;
+    if (!r.ok) throw Error(r.error);
+    return r;
+  } finally { clearTimeout(timer); pending = null; if (writer) writer.releaseLock(); busy = false; }
+}
+el('brightness').oninput = () => el('percent').value = el('brightness').value + '%';
+el('displayForm').onsubmit = async e => {
+  e.preventDefault();
+  const s = Object.fromEntries(keys.map(k => [k,Number(el(k).value)]));
+  if (s.cycle > 0 && s.cycle < 5) return note('自動切替は0または5〜60秒で指定してください');
+  try { load(await request({op:'save',settings:s})); note('表示設定を保存しました'); }
+  catch (e) { note(e.message); }
+};
+el('wifiForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    network(await request({op:'wifi',ssid:el('ssid').value,password:el('password').value}));
+    el('password').value = ''; note('Wi-Fiを保存しました。接続状態を確認中です');
+  } catch (e) { note(e.message); }
+};
+el('connect').onclick = async () => {
+  el('connect').disabled = true;
+  try {
+    if (!port) {
+      port = await navigator.serial.requestPort();
+      await port.open({baudRate:115200});
+      reader = port.readable.getReader(); readLines();
+    }
+    load(await request({op:'get'})); note('');
+  } catch (e) {
+    if (port && !port.readable) port = null;
+    el('connect').disabled = false; note(e.message);
+  }
+};
+if (usb) {
+  el('wifi').hidden = false; el('connect').hidden = false;
+  el('connection').textContent = 'Tab5をUSBで接続してください';
+  if (!navigator.serial) { el('connect').disabled = true; note('PC版ChromeまたはEdgeで開いてください'); }
+  setInterval(async () => {
+    if (!port || busy || el('controls').disabled) return;
+    try { network(await request({op:'get'})); } catch(e) { note(e.message); }
+  },5000);
+} else { request({op:'get'}).then(load).catch(e => note(e.message)); }
+</script>
+</html>

@@ -1,0 +1,5 @@
+.pio/
+.vscode/
+.env*
+WiFiSetting.h
+Local.h
