@@ -226,8 +226,8 @@ void drawPanel() {
 }
 
 void initializeDisplay() {
-    M5.Display.setRotation(1);
-    if (M5.Display.width()<M5.Display.height()) M5.Display.setRotation(0);
+    M5.Display.setRotation(3);
+    if (M5.Display.width()<M5.Display.height()) M5.Display.setRotation(2);
     M5.Display.fillScreen(Bg);
     for (auto *s : {&base,&scope,&panel}) { s->setPsram(true); s->setColorDepth(16); }
     ready=base.createSprite(Side,Side) && scope.createSprite(Side,Side) && panel.createSprite(562,710);

@@ -14,6 +14,7 @@ button:disabled{opacity:.45}fieldset{padding:0;border:0;margin:0}small,output{co
 <h1>Tab5 Flight Tracker</h1>
 <div id="connection"></div>
 <button type="button" id="connect" hidden>USBで接続</button>
+<button type="button" id="disconnect" hidden>USBを切断</button>
 <p role="status" id="status"></p>
 <fieldset id="controls" disabled>
 <section><h2>レーダー表示</h2>
@@ -35,7 +36,7 @@ button:disabled{opacity:.45}fieldset{padding:0;border:0;margin:0}small,output{co
 const el = id => document.getElementById(id);
 const usb = location.protocol === 'file:' || ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 const keys = ['brightness','range','cycle','sweep'];
-let port, reader, pending, busy = false;
+let port, reader, readTask, writeTask, pending, busy = false;
 const encoder = new TextEncoder();
 function note(text) { el('status').textContent = text; }
 function network(r) {
@@ -69,8 +70,11 @@ async function readLines() {
   finally {
     if (pending) pending({ok:false,error:'USBが切断されました'});
     reader.releaseLock();
+    reader = null;
+    try { await writeTask; } catch {}
     try { await port.close(); } catch {}
     port = null; el('controls').disabled = true; el('connect').disabled = false;
+    el('disconnect').hidden = true;
     el('connection').textContent = 'USB 未接続';
   }
 }
@@ -84,19 +88,28 @@ async function request(msg) {
   }
   if (!port || busy) throw Error('USBの接続または応答を確認してください');
   busy = true;
-  let timer, writer;
+  let timer;
   try {
-    writer = port.writable.getWriter();
+    const writer = port.writable.getWriter();
     const reply = new Promise(resolve => {
       pending = resolve;
       timer = setTimeout(() => resolve({ok:false,error:'USB応答タイムアウト'}),5000);
     });
-    await writer.write(encoder.encode(JSON.stringify(msg)+'\n'));
+    writeTask = writer.write(encoder.encode(JSON.stringify(msg)+'\n')).finally(() => writer.releaseLock());
+    await writeTask;
     const r = await reply;
     if (!r.ok) throw Error(r.error);
     return r;
-  } finally { clearTimeout(timer); pending = null; if (writer) writer.releaseLock(); busy = false; }
+  } finally { clearTimeout(timer); pending = null; busy = false; }
 }
+async function disconnect() {
+  el('controls').disabled = true;
+  try { await reader?.cancel(); } catch {}
+  if (readTask) await readTask;
+  else if (port) { try { await port.close(); } catch {} port = null; }
+}
+el('disconnect').onclick = disconnect;
+window.addEventListener('pagehide', () => { el('password').value = ''; void disconnect(); });
 el('brightness').oninput = () => el('percent').value = el('brightness').value + '%';
 el('displayForm').onsubmit = async e => {
   e.preventDefault();
@@ -116,13 +129,18 @@ el('connect').onclick = async () => {
   el('connect').disabled = true;
   try {
     if (!port) {
-      port = await navigator.serial.requestPort();
-      await port.open({baudRate:115200});
-      reader = port.readable.getReader(); readLines();
+      readTask = null;
+      port = await navigator.serial.requestPort({filters:[{usbVendorId:0x303a}]});
+      await port.open({baudRate:115200,bufferSize:16384});
+      // Tab5のリセットを防ぐためRTSを先に解除する。
+      await port.setSignals({requestToSend:false});
+      await port.setSignals({dataTerminalReady:true});
+      reader = port.readable.getReader(); readTask = readLines();
     }
     load(await request({op:'get'})); note('');
+    el('disconnect').hidden = false;
   } catch (e) {
-    if (port && !port.readable) port = null;
+    await disconnect();
     el('connect').disabled = false; note(e.message);
   }
 };
