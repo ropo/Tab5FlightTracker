@@ -10,8 +10,17 @@ section{border-top:1px solid #354852;padding:1rem 0}label{display:block;margin:.
 input,select,button{box-sizing:border-box;font:inherit;padding:.45rem .7rem;border:1px solid #47606a;border-radius:5px;background:#152630;color:inherit}
 input,select{width:100%}button{margin-top:.5rem;cursor:pointer;color:#092026;background:#74e3cf;font-weight:650}
 button:disabled{opacity:.45}fieldset{padding:0;border:0;margin:0}small,output{color:#afc4cb}a{color:#74e3cf}
+.cover{display:block;width:100%;height:auto;border-radius:8px}
+header p{margin:.75rem 0 1.25rem;color:#c5d9db}
+footer{margin-top:1rem;border-top:1px solid #354852;padding-top:.8rem;text-align:right}
+footer a{display:inline-flex;align-items:center;gap:.5rem;color:#c5d9db;text-decoration:none}
+footer a:hover,footer a:focus-visible{text-decoration:underline;color:#74e3cf}
 </style>
+<header>
 <h1>Tab5 Flight Tracker</h1>
+<img class="cover" src="ropo-flight.jpg" width="1200" height="480" alt="卓上のTab5に映った機影を見つけて、窓の外の旅客機を指さすろぽ">
+<p>「あの飛行機、どの便かにゃ？」羽田周辺の空をTab5で眺めて、気になる機影をタップすると、便のコールサインや高度がわかります。</p>
+</header>
 <div id="connection"></div>
 <button type="button" id="connect" hidden>USBで接続</button>
 <button type="button" id="disconnect" hidden>USBを切断</button>
@@ -28,9 +37,12 @@ button:disabled{opacity:.45}fieldset{padding:0;border:0;margin:0}small,output{co
 <form id="wifiForm" autocomplete="off">
 <label>SSID<input id="ssid" required maxlength="32" autocapitalize="off" spellcheck="false"></label>
 <label>パスワード<input id="password" type="password" maxlength="63" autocomplete="new-password"></label>
-<small>2.4 GHzのアクセスポイントを指定してください。オープンネットワークでは空欄にします。</small><br>
+<small>保存済みのSSIDを表示します。接続先を再登録するときはパスワードを入力してください。2.4 GHz対応。オープンネットワークでは空欄にします。</small><br>
 <button>Wi-Fiを保存して接続</button></form></section>
 </fieldset>
+<footer><a href="https://x.com/ropotama" target="_blank" rel="noopener noreferrer">
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"/></svg>
+2026 @RopoTama</a></footer>
 <script>
 'use strict';
 const el = id => document.getElementById(id);
@@ -74,6 +86,7 @@ async function readLines() {
     try { await writeTask; } catch {}
     try { await port.close(); } catch {}
     port = null; el('controls').disabled = true; el('connect').disabled = false;
+    el('ssid').value = ''; el('password').value = '';
     el('disconnect').hidden = true;
     el('connection').textContent = 'USB 未接続';
   }
@@ -137,7 +150,11 @@ el('connect').onclick = async () => {
       await port.setSignals({dataTerminalReady:true});
       reader = port.readable.getReader(); readTask = readLines();
     }
-    load(await request({op:'get'})); note('');
+    const current = await request({op:'get'});
+    load(current);
+    el('ssid').value = current.ssid ?? '';
+    el('password').value = '';
+    note('');
     el('disconnect').hidden = false;
   } catch (e) {
     await disconnect();

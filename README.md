@@ -6,7 +6,7 @@ M5Stack Tab5で羽田空港周辺の空を眺める、タッチ操作のフラ�
 
 1. Tab5をUSB接続し、PC版ChromeまたはEdgeで [web/settings.html](web/settings.html) を開きます。
 2. 「USBで接続」でTab5のシリアルポートを選びます。シリアルモニターは先に閉じてください。
-3. 2.4 GHz Wi-FiのSSIDとパスワードを入力し、「Wi-Fiを保存して接続」を押します。登録内容は本体のNVSに保存されます。
+3. 2.4 GHz Wi-FiのSSIDとパスワードを入力し、「Wi-Fiを保存して接続」を押します。次回のUSB接続時は、本体のNVSに保存したSSIDが入力欄に表示されます。パスワード欄は空欄です。
 4. 接続すると設定ページとTab5にIPアドレスが表示されます。同じLANのブラウザーでそのアドレスを開くと、表示設定を変更できます。
 5. 登録後は「USBを切断」でポートを解放できます。Windowsで接続するときは、ページ側がRTSを先に解除してからDTRを設定します。
 
@@ -33,7 +33,7 @@ M5Stack Tab5で羽田空港周辺の空を眺める、タッチ操作のフラ�
 
 ```sh
 pio run -e tab5
-pio run -e tab5 -t upload --upload-port COM16
+pio run -e tab5 -t upload
 ```
 
-ポート名は環境に合わせて変更してください。設定ページと地図はファームウェアに含まれます。
+複数の機器がある場合は `pio device list` でTab5を確認し、`--upload-port` で指定してください。設定ページ、イラスト、地図はファームウェアに含まれます。

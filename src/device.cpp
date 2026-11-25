@@ -6,6 +6,8 @@
 #include <WiFi.h>
 
 extern const char settingsPage[] asm("_binary_web_settings_html_start");
+extern const char flightImage[] asm("_binary_web_ropo_flight_jpg_start");
+extern const char flightImageEnd[] asm("_binary_web_ropo_flight_jpg_end");
 Settings settings;
 
 namespace {
@@ -78,7 +80,10 @@ String command(const char *data, bool usb, int &status) {
     const char *error = deserializeJson(req, data) ? "Invalid JSON" : apply(req, usb);
     status = error ? 400 : 200;
     if (error) { reply["ok"] = false; reply["error"] = error; }
-    else describe(reply);
+    else {
+        describe(reply);
+        if (usb && storedWifi) reply["ssid"] = station.ssid;
+    }
     String output;
     serializeJson(reply, output);
     return output;
@@ -107,6 +112,9 @@ void configureDevice() {
     WiFi.setAutoReconnect(true);
     connectStation();
     server.on("/", HTTP_GET, [] { server.send_P(200, "text/html; charset=utf-8", settingsPage); });
+    server.on("/ropo-flight.jpg", HTTP_GET, [] {
+        server.send_P(200, "image/jpeg", flightImage, flightImageEnd - flightImage);
+    });
     server.on("/settings", HTTP_GET, [] {
         JsonDocument doc;
         describe(doc);
