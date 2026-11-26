@@ -234,6 +234,7 @@ void drawPanel() {
     }
     textAt(p,483,80,"JST",Dim);
     textAt(p,0,59,"Flight radar",Ink,2,true);
+    textAt(p,p.textWidth("Flight radar")+10,88,String("v")+FirmwareVersion,Dim);
     String state=demoMode ? "Simulated traffic" : String(statusText);
     if (!demoMode && observed) state += "  /  " + String(std::max(0L,long(now-observed)))+"s ago";
     textAt(p,0,123,state,stale() ? Gold : Dim);
@@ -426,6 +427,7 @@ void renderTracker() {
 }
 
 void describeRadar(JsonObject out) {
+    out["version"]=FirmwareVersion;
     out["displayReady"]=ready;
     out["imuReady"]=M5.Imu.isEnabled();
     out["rotation"]=M5.Display.getRotation();

@@ -105,7 +105,9 @@ const char *download() {
     cfg.disable_auto_redirect = true;
     cfg.event_handler = onHttp;
     cfg.user_data = &body;
-    cfg.user_agent = "Tab5FlightTracker/1.0";
+    char agent[40];
+    snprintf(agent, sizeof(agent), "Tab5FlightTracker/%s", FirmwareVersion);
+    cfg.user_agent = agent;
     auto client = esp_http_client_init(&cfg);
     const char *error = "HTTPS connection failed";
     if (client) {
