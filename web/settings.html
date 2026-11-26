@@ -67,8 +67,10 @@ footer{border-top:2px solid var(--ink);padding:16px 0;display:flex;justify-conte
 <label>パスワード<input id="password" type="password" maxlength="63" autocomplete="new-password"></label>
 <small>保存済みのSSIDを表示します。接続先を再登録するときはパスワードを入力してください。2.4 GHz対応。オープンネットワークでは空欄にします。</small><br>
 <button>Wi-Fiを保存して接続</button></form></section>
-<section id="firmware" hidden><h2>ファームウェア更新</h2>
-<form id="updateForm"><small>Tab5 Flight Tracker用のBINを選び、本体の「OTA code」をタップしてください。更新後は設定を保持して再起動します。</small>
+<section id="firmware"><h2>ファームウェア更新</h2>
+<p>現在のファームウェア　<strong id="firmwareVersion">未接続</strong><br>
+<a href="https://github.com/ropo/Tab5FlightTracker/releases" target="_blank" rel="noopener noreferrer">GitHub Releases からBINをダウンロード</a></p>
+<form id="updateForm" hidden><small>Tab5 Flight Tracker用のBINを選び、本体の「OTA code」をタップしてください。更新後は設定を保持して再起動します。</small>
 <label>ファームファイル（.bin）<input id="binary" type="file" accept=".bin" required></label>
 <label>本体に表示された6桁<input id="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="off"></label>
 <button>ファームを書き込む</button><output id="uploadNote" aria-live="polite"></output></form></section>
@@ -86,6 +88,7 @@ let port, reader, readTask, writeTask, pending, busy = false;
 const encoder = new TextEncoder();
 function note(text) { el('status').textContent = text; }
 function network(r) {
+  el('firmwareVersion').textContent = r.radar?.version ? 'v' + r.radar.version : '不明';
   el('connection').textContent = usb ? (r.connected ? 'USB 接続中　/　' + r.ip :
     'USB 接続中　Wi-Fi 未接続') : 'Wi-Fi 経由で接続中';
   const lan = el('lan');
@@ -110,7 +113,7 @@ function load(r) {
   el('range').options[0].disabled = !r.feed;
   el('feedSection').hidden = !r.feed;
   if (r.feed) el('seconds').value = r.feed.seconds;
-  el('firmware').hidden = usb || !r.ota;
+  el('updateForm').hidden = usb || !r.ota;
   el('percent').value = el('brightness').value + '%';
   el('controls').disabled = false;
 }
@@ -141,6 +144,7 @@ async function readLines() {
     port = null; el('controls').disabled = true; el('connect').disabled = false;
     el('ssid').value = ''; el('password').value = '';
     el('apiKey').value = ''; el('lan').hidden = el('usbCode').hidden = true;
+    el('firmwareVersion').textContent = '未接続';
     el('disconnect').hidden = true;
     el('connection').textContent = 'USB 未接続';
   }
