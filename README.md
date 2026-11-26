@@ -4,7 +4,7 @@ M5Stack Tab5で羽田・関西・那覇・新千歳の空を眺める、タッ�
 
 ## 初回設定
 
-1. Tab5をUSB接続し、PC版ChromeまたはEdgeで [web/settings.html](web/settings.html) を開きます。
+1. Tab5をUSB接続し、PC版ChromeまたはEdgeで [USB設定ページ](https://ropo.github.io/Tab5FlightTracker/) を開きます。
 2. 「USBで接続」でTab5のシリアルポートを選びます。シリアルモニターは先に閉じてください。
 3. 2.4 GHz Wi-FiのSSIDとパスワードを入力し、「Wi-Fiを保存して接続」を押します。次回のUSB接続時は、本体のNVSに保存したSSIDが入力欄に表示されます。パスワード欄は空欄です。
 4. 接続すると設定ページとTab5にIPアドレスが表示されます。同じLANのブラウザーでそのアドレスを開くと、表示設定を変更できます。
