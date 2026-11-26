@@ -14,6 +14,7 @@ TaskHandle_t worker;
 QueueHandle_t completed;
 Feed report;
 bool pending;
+char requestKey[sizeof(FeedSettings::key)]{};
 constexpr size_t BodyLimit = 768 * 1024;
 
 struct Body {
@@ -66,6 +67,8 @@ const char *parseBody(Body &body) {
             continue;
         Aircraft p;
         p.pos = projectPosition(regions[report.region], a["lat"], a["lon"]);
+        p.sample = p.pos;
+        p.positionAge = std::max(0.f, a["seen_pos"] | 0.f);
         if (distance2(p) > 60.5f * 60.5f) continue;
         strlcpy(p.hex, a["hex"], sizeof(p.hex));
         String call = a["flight"] | "";
@@ -99,12 +102,14 @@ const char *download() {
     cfg.url = url;
     cfg.crt_bundle_attach = esp_crt_bundle_attach;
     cfg.timeout_ms = 12000;
+    cfg.disable_auto_redirect = true;
     cfg.event_handler = onHttp;
     cfg.user_data = &body;
     cfg.user_agent = "Tab5FlightTracker/1.0";
     auto client = esp_http_client_init(&cfg);
     const char *error = "HTTPS connection failed";
     if (client) {
+        if (*requestKey) esp_http_client_set_header(client, "x-api-key", requestKey);
         const auto rc = esp_http_client_perform(client);
         report.http = esp_http_client_get_status_code(client);
         if (rc != ESP_OK) {
@@ -133,6 +138,7 @@ void fetchLoop(void *) {
         report.observed = 0;
         report.retryAfter = 0;
         strlcpy(report.error, download(), sizeof(report.error));
+        memset(requestKey, 0, sizeof(requestKey));
         const uint8_t done = 1;
         xQueueSend(completed, &done, portMAX_DELAY);
     }
@@ -144,9 +150,10 @@ void startFeed() {
     if (completed) xTaskCreate(fetchLoop, "flight-feed", 16384, nullptr, 1, &worker);
 }
 
-bool requestFeed(uint8_t region) {
+bool requestFeed(uint8_t region, const char *key) {
     if (!worker || pending) return false;
     pending = true;
+    strlcpy(requestKey, key, sizeof(requestKey));
     xTaskNotify(worker, region, eSetValueWithOverwrite);
     return true;
 }

@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-constexpr unsigned RegionCount = 3;
+constexpr unsigned RegionCount = 4;
 struct Region {
     const char *airport, *title;
     double lat, lon;
@@ -19,6 +19,8 @@ Point projectPosition(const Region &region, double lat, double lon);
 struct Aircraft {
     char hex[10]{}, call[12]{}, type[9]{};
     Point pos{};
+    Point sample{};
+    float positionAge = 0;
     float altitude = NAN, speed = NAN, heading = NAN;
     bool ground = false;
     Point trail[5]{};
@@ -39,13 +41,24 @@ struct Settings {
     uint8_t brightness = 65, range = 40, cycle = 12, sweep = 8, region = 0;
 };
 
+struct FeedSettings {
+    uint32_t seconds = PollSeconds;
+    char key[161]{};
+};
+extern FeedSettings feedSettings;
+unsigned pollSeconds();
+const char *feedKeyState();
+void onFeedSettingsChanged();
+void showUpdateCode();
+const char *updateCode();
+
 extern Settings settings;
 extern bool demoMode;
 void configureDevice();
 void serviceDevice();
 bool wifiConfigured();
 void startFeed();
-bool requestFeed(uint8_t region);
+bool requestFeed(uint8_t region, const char *key);
 bool takeFeed(const Feed *&result);
 void initializeDisplay();
 void renderTracker();

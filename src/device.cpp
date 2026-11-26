@@ -4,11 +4,14 @@
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <esp_ota_ops.h>
+#include <esp_random.h>
 
 extern const char settingsPage[] asm("_binary_web_settings_html_start");
 extern const char flightImage[] asm("_binary_web_ropo_flight_jpg_start");
 extern const char flightImageEnd[] asm("_binary_web_ropo_flight_jpg_end");
 Settings settings;
+FeedSettings feedSettings;
 
 namespace {
 Preferences prefs;
@@ -21,10 +24,16 @@ uint32_t lastConnect;
 char line[768];
 size_t used;
 bool discard;
+char otaCode[7]{};
+uint32_t codeIssued, rebootAt;
+bool rebootPending;
+esp_ota_handle_t uploadHandle;
+const esp_partition_t *uploadSlot;
+int uploadStatus;
 
 bool allowed(const Settings &s) {
     return s.brightness >= 5 && s.brightness <= 100 &&
-           (s.range == 20 || s.range == 40 || s.range == 60) &&
+           (s.range == 10 || s.range == 20 || s.range == 40 || s.range == 60) &&
            (s.cycle == 0 || (s.cycle >= 5 && s.cycle <= 60)) &&
            s.sweep >= 3 && s.sweep <= 20 && s.region < RegionCount;
 }
@@ -37,6 +46,12 @@ void describe(JsonDocument &reply) {
     s["cycle"] = settings.cycle;
     s["sweep"] = settings.sweep;
     s["region"] = settings.region;
+    reply["regions"] = RegionCount;
+    auto feed = reply["feed"].to<JsonObject>();
+    feed["keyState"] = feedKeyState();
+    feed["seconds"] = feedSettings.seconds;
+    feed["effectiveSeconds"] = pollSeconds();
+    reply["ota"] = true;
     reply["connected"] = WiFi.isConnected();
     if (WiFi.isConnected()) reply["ip"] = WiFi.localIP().toString();
     reply["configured"] = storedWifi;
@@ -46,6 +61,31 @@ void describe(JsonDocument &reply) {
 const char *apply(JsonDocument &req, bool usb) {
     const char *op = req["op"] | "";
     if (!strcmp(op, "get")) return nullptr;
+    if (!strcmp(op, "updateCode")) {
+        if (!usb || !WiFi.isConnected()) return "Connect over USB and Wi-Fi first";
+        showUpdateCode();
+        return nullptr;
+    }
+    if (!strcmp(op, "feed")) {
+        FeedSettings next = feedSettings;
+        if (!req["seconds"].is<uint32_t>()) return "Invalid interval";
+        next.seconds = req["seconds"];
+        if (next.seconds < 10 || next.seconds > 86400) return "Interval must be 10-86400 seconds";
+        if (req["key"].is<JsonString>()) {
+            auto key = req["key"].as<JsonString>();
+            if (key.size() >= sizeof(next.key)) return "API key too long";
+            for (size_t i = 0; i < key.size(); ++i)
+                if (uint8_t(key.c_str()[i]) < 33 || uint8_t(key.c_str()[i]) > 126) return "Invalid API key";
+            memset(next.key, 0, sizeof(next.key));
+            memcpy(next.key, key.c_str(), key.size());
+        } else if (!req["key"].isNull()) return "Invalid API key";
+        if (next.seconds != feedSettings.seconds || strcmp(next.key, feedSettings.key)) {
+            if (prefs.putBytes("feed", &next, sizeof(next)) != sizeof(next)) return "Save failed";
+            feedSettings = next;
+            onFeedSettingsChanged();
+        }
+        return nullptr;
+    }
     if (!strcmp(op, "wifi")) {
         if (!usb) return "Wi-Fi registration requires USB";
         const auto ssid = req["ssid"].as<JsonString>(), pass = req["password"].as<JsonString>();
@@ -89,6 +129,7 @@ String command(const char *data, bool usb, int &status) {
     else {
         describe(reply);
         if (usb && storedWifi) reply["ssid"] = station.ssid;
+        if (usb && req["op"] == "updateCode") reply["updateCode"] = updateCode();
     }
     String output;
     serializeJson(reply, output);
@@ -104,6 +145,52 @@ void connectStation() {
 
 bool wifiConfigured() { return storedWifi || WiFi.isConnected(); }
 
+const char *updateCode() {
+    return millis() - codeIssued < 120000 ? otaCode : "";
+}
+
+void showUpdateCode() {
+    snprintf(otaCode, sizeof(otaCode), "%06lu", (unsigned long)(esp_random() % 1000000));
+    codeIssued = millis();
+}
+
+namespace {
+void abortUpload() {
+    if (uploadHandle) esp_ota_abort(uploadHandle);
+    uploadHandle = 0;
+}
+
+void receiveFirmware() {
+    if (server.header("Content-Type") != "application/octet-stream") {
+        uploadStatus = 415;
+        return;
+    }
+    auto &chunk = server.raw();
+    if (chunk.status == RAW_START) {
+        abortUpload();
+        uploadStatus = 403;
+        const String origin = server.header("Origin");
+        if ((origin.length() && origin != String("http://") + server.hostHeader()) || !*updateCode()) return;
+        bool matches = server.header("X-Tab5-Code") == otaCode;
+        otaCode[0] = 0;
+        if (!matches || rebootPending) return;
+        uploadSlot = esp_ota_get_next_update_partition(nullptr);
+        const int length = server.clientContentLength();
+        uploadStatus = 400;
+        if (!uploadSlot || length < 256 || size_t(length) > uploadSlot->size) return;
+        if (esp_ota_begin(uploadSlot, OTA_WITH_SEQUENTIAL_WRITES, &uploadHandle) != ESP_OK) uploadStatus = 500;
+    } else if (chunk.status == RAW_ABORTED) {
+        abortUpload();
+    } else if (uploadHandle && chunk.status == RAW_WRITE) {
+        if (esp_ota_write(uploadHandle, chunk.buf, chunk.currentSize) != ESP_OK) abortUpload();
+    } else if (uploadHandle && chunk.status == RAW_END) {
+        if (esp_ota_end(uploadHandle) == ESP_OK && esp_ota_set_boot_partition(uploadSlot) == ESP_OK)
+            uploadStatus = 200;
+        uploadHandle = 0;
+    }
+}
+}
+
 void configureDevice() {
     prefs.begin("flight-radar", false);
     Settings saved;
@@ -113,6 +200,11 @@ void configureDevice() {
         prefs.getBytes("display", &saved, length) == length && allowed(saved))
         settings = saved;
     savedDisplay = settings;
+    FeedSettings savedFeed;
+    if (prefs.getBytesLength("feed") == sizeof(savedFeed) &&
+        prefs.getBytes("feed", &savedFeed, sizeof(savedFeed)) == sizeof(savedFeed) &&
+        savedFeed.seconds >= 10 && savedFeed.seconds <= 86400 && savedFeed.key[sizeof(savedFeed.key)-1] == 0)
+        feedSettings = savedFeed;
     storedWifi = prefs.getBytesLength("station") == sizeof(station) &&
         prefs.getBytes("station", &station, sizeof(station)) == sizeof(station) && station.ssid[0];
     M5.Display.setBrightness(settings.brightness * 255 / 100);
@@ -132,8 +224,15 @@ void configureDevice() {
         server.sendHeader("Cache-Control", "no-store");
         server.send(200, "application/json", body);
     });
-    const char *headers[] = {"Content-Type", "Origin", "Host"};
-    server.collectHeaders(headers, 3);
+    const char *headers[] = {"Content-Type", "Origin", "Host", "X-Tab5-Code"};
+    server.collectHeaders(headers, 4);
+    server.on("/firmware", HTTP_POST, [] {
+        int status = uploadStatus ? uploadStatus : 400;
+        uploadStatus = 0;
+        server.send(status, "text/plain", status == 200 ? "OK" :
+            (status == 403 ? "Check the update code on Tab5" : "Firmware image rejected"));
+        if (status == 200) { rebootAt = millis(); rebootPending = true; }
+    }, receiveFirmware);
     server.on("/settings", HTTP_POST, [] {
         const String origin = server.header("Origin");
         if (origin.length() && origin != String("http://") + server.hostHeader()) {
@@ -149,6 +248,7 @@ void configureDevice() {
 }
 
 void serviceDevice() {
+    if (rebootPending && millis() - rebootAt > 1000) ESP.restart();
     for (int n = 0; n < 768 && Serial.available(); ++n) {
         char c = Serial.read();
         if (c == '\n') {

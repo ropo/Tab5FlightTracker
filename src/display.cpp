@@ -16,6 +16,11 @@ Aircraft livePlanes[MaxAircraft], demoPlanes[8];
 Aircraft *planes=livePlanes;
 int liveCount;
 int count, selected = -1, cachedRange, nearby[3]{-1,-1,-1};
+int page, pages = 1;
+bool movingOnly = true;
+uint32_t feedReceived;
+float initialAge;
+unsigned predictionLimit = PollSeconds;
 char statusText[64] = "Waiting for ADS-B";
 time_t observed;
 uint32_t lastFrame, lastPanel, lastFocus;
@@ -36,7 +41,10 @@ constexpr Place places[] = {
     {"ITM",34.785,135.438,true},{"UKB",34.633,135.224,true},
     {"Ginowan",26.281,127.778,false},{"Nago",26.591,127.978,false},
     {"Motobu",26.658,127.902,false},{"Itoman",26.124,127.665,false},
-    {"Tokashiki",26.197,127.364,false},{"UEO",26.363,126.714,true}
+    {"Tokashiki",26.197,127.364,false},{"UEO",26.363,126.714,true},
+    {"Sapporo",43.062,141.354,false},{"Chitose",42.821,141.651,false},
+    {"Tomakomai",42.635,141.605,false},{"Otaru",43.190,140.994,false},
+    {"Muroran",42.315,140.974,false},{"OKD",43.117,141.380,true}
 };
 
 void textAt(M5Canvas &canvas, int x, int y, const String &s, uint32_t color, int size=1, bool large=false) {
@@ -50,7 +58,18 @@ int px(Point p) { return C + lroundf(p.east * R / settings.range); }
 int py(Point p) { return C - lroundf(p.north * R / settings.range); }
 float miles(const Aircraft &a) { return hypotf(a.pos.east, a.pos.north); }
 bool visible(int i) { return i >= 0 && i < count && miles(planes[i]) <= settings.range; }
-bool stale() { return !demoMode && observed && difftime(time(nullptr),observed) > PollSeconds+45; }
+bool stale() { return !demoMode && observed && difftime(time(nullptr),observed) > predictionLimit+45; }
+
+void predictPositions(uint32_t now) {
+    float age = std::min(float(predictionLimit), initialAge + (now - feedReceived) * .001f);
+    for (int i = 0; i < liveCount; ++i) {
+        auto &a = livePlanes[i];
+        if (!isfinite(a.heading) || !isfinite(a.speed) || a.speed <= 0) continue;
+        const float distance = (age + a.positionAge) * a.speed / 3600.f;
+        const float h = a.heading * DEG_TO_RAD;
+        a.pos = {a.sample.east + distance * sinf(h), a.sample.north + distance * cosf(h)};
+    }
+}
 
 void drawBase() {
     cachedRange = settings.range;
@@ -140,6 +159,10 @@ void drawAircraft(int i) {
     bool focus=i==selected;
     uint32_t color=focus ? Gold : (stale() ? Dim : Cyan);
     int lastX=x, lastY=y;
+    if (!demoMode && hypotf(a.sample.east,a.sample.north) <= settings.range) {
+        lastX=px(a.sample); lastY=py(a.sample);
+        scope.drawLine(lastX,lastY,x,y,Grid);
+    }
     for (int n=a.trailCount-1;n>=0;n--) {
         int tx=px(a.trail[n]),ty=py(a.trail[n]);
         if (hypotf(tx-C,ty-C)>R) break;
@@ -197,14 +220,20 @@ void drawPanel() {
     time_t now=time(nullptr);
     char clockText[12]="--:--";
     if (now>1700000000) { struct tm tm; localtime_r(&now,&tm); strftime(clockText,sizeof(clockText),"%H:%M",&tm); }
-    textAt(p,397,17,clockText,Ink,1,true);
-    textAt(p,483,26,"JST",Dim);
+    int tileX=328;
+    for (char digit : String(clockText)) {
+        if (digit == ':') {
+            p.fillCircle(tileX+7,33,3,Dim); p.fillCircle(tileX+7,48,3,Dim);
+            tileX+=16;
+            continue;
+        }
+        p.fillRoundRect(tileX,8,46,68,5,Card);
+        textAt(p,tileX+8,16,String(digit),Ink,2,true);
+        p.drawFastHLine(tileX,42,46,Bg);
+        tileX+=50;
+    }
+    textAt(p,483,80,"JST",Dim);
     textAt(p,0,59,"Flight radar",Ink,2,true);
-    p.fillRoundRect(396,68,144,38,16,Card);
-    p.drawRoundRect(396,68,144,38,16,demoMode ? Gold : Cyan);
-    textAt(p,414,76,demoMode ? "DEMO  /  LIVE" : "LIVE  /  DEMO",demoMode ? Gold : Cyan);
-    int visibleCount=0;
-    for(int i=0;i<count;i++) if(visible(i)) visibleCount++;
     String state=demoMode ? "Simulated traffic" : String(statusText);
     if (!demoMode && observed) state += "  /  " + String(std::max(0L,long(now-observed)))+"s ago";
     textAt(p,0,123,state,stale() ? Gold : Dim);
@@ -220,21 +249,34 @@ void drawPanel() {
                        value(a ? a->speed : NAN),value(a ? a->heading : NAN),a ? String(miles(*a),1) : "--"};
     for(int n=0;n<4;n++) { textAt(p,22+n*132,314,labels[n],Dim); textAt(p,22+n*132,341,values[n],Ink,1,true); }
     textAt(p,0,418,"Nearby aircraft",Ink,1,true);
-    textAt(p,427,423,String(visibleCount)+" in range",Cyan);
-    int used=0;
-    std::fill(std::begin(nearby),std::end(nearby),-1);
-    for(int i=0;i<count && used<3;i++) {
-        if(!visible(i) || i==selected) continue;
-        nearby[used]=i;
-        int y=467+used++*49;
+    int matches[MaxAircraft], total=0;
+    for(int i=0;i<count;i++) {
+        if(visible(i) && (!movingOnly || planes[i].speed >= 30)) matches[total++]=i;
+    }
+    pages=std::max(1,(total+2)/3);
+    page=std::min(page,pages-1);
+    p.drawRoundRect(366,404,182,40,6,movingOnly ? Cyan : Grid);
+    textAt(p,380,416,movingOnly ? "Moving  /  30+ kt" : "All speeds",movingOnly ? Cyan : Ink);
+    for(int row=0;row<3;row++) {
+        const int index=page*3+row;
+        nearby[row]=index<total ? matches[index] : -1;
+        if(nearby[row]<0) continue;
+        int i=nearby[row], y=458+row*42;
         p.drawFastHLine(0,y-8,546,Divider);
-        textAt(p,8,y,planes[i].call,Ink,1,true);
+        textAt(p,8,y,planes[i].call,i==selected ? Gold : Ink,1,true);
         textAt(p,255,y+4,planes[i].ground ? "GND" : value(planes[i].altitude)+" ft",Dim);
         textAt(p,438,y+4,String(miles(planes[i]),1)+" NM",Cyan);
     }
-    if (!used) textAt(p,8,474,"No other aircraft in range",Dim);
+    if (!total) textAt(p,8,474,movingOnly ? "No moving aircraft in range" : "No aircraft in range",Dim);
+    textAt(p,8,589,String(total)+" aircraft",Dim);
+    p.drawRoundRect(285,577,73,40,5,page>0 ? Cyan : Grid);
+    textAt(p,309,587,"<",page>0 ? Ink : Dim,1,true);
+    textAt(p,374,589,String(page+1)+" / "+String(pages),Ink);
+    p.drawRoundRect(470,577,78,40,5,page+1<pages ? Cyan : Grid);
+    textAt(p,500,587,">",page+1<pages ? Ink : Dim,1,true);
     p.drawFastHLine(0,620,546,Divider);
-    textAt(p,0,633,WiFi.isConnected() ? String("Settings   http://")+WiFi.localIP().toString() :
+    textAt(p,0,633,*updateCode() ? String("Firmware update code   ")+updateCode() :
+           WiFi.isConnected() ? String("Settings   http://")+WiFi.localIP().toString()+"   /   OTA code >" :
            "USB setup   /   Open web/settings.html",Ink);
     textAt(p,0,664,demoMode ? "DEMO DATA    /    Natural Earth" : "adsb.lol  (ODbL)    /    Natural Earth",Dim);
     p.pushSprite(PanelX,0);
@@ -293,6 +335,7 @@ void clearRegionTraffic() {
     observed = 0;
     selected = -1;
     pinned = false;
+    page = 0;
     std::fill(std::begin(nearby),std::end(nearby),-1);
     cachedRange = 0;
     panelDirty = true;
@@ -310,11 +353,11 @@ void acceptFeed(const Feed &data) {
         if (!strcmp(previous,a.hex)) found=i;
         for(int j=0;j<liveCount;j++) if (!strcmp(a.hex,livePlanes[j].hex)) {
             const auto &old=livePlanes[j];
-            if (difftime(data.observed,observed)<=2*PollSeconds+30) {
-                bool moved=hypotf(old.pos.east-a.pos.east,old.pos.north-a.pos.north)>.03f;
+            if (difftime(data.observed,observed)<=2*predictionLimit+30) {
+                bool moved=hypotf(old.sample.east-a.sample.east,old.sample.north-a.sample.north)>.03f;
                 int start=moved && old.trailCount==5 ? 1 : 0;
                 for(int k=start;k<old.trailCount;k++) a.trail[a.trailCount++]=old.trail[k];
-                if(moved) a.trail[a.trailCount++]=old.pos;
+                if(moved) a.trail[a.trailCount++]=old.sample;
             }
             break;
         }
@@ -326,6 +369,9 @@ void acceptFeed(const Feed &data) {
         if (!visible(selected)) { pinned=false; selected=-1; }
     }
     observed=data.observed;
+    feedReceived=millis();
+    initialAge=std::max(0.,difftime(time(nullptr),observed));
+    predictionLimit=pollSeconds();
     setFeedStatus("ADS-B received");
     panelDirty=true;
 }
@@ -338,15 +384,22 @@ void updateTouch() {
         if(x<=290 && t.y<=55) {
             settings.region = (settings.region + 1) % RegionCount;
             onRegionChanged();
-        } else if(x>=390 && t.y>=60 && t.y<=116) setDemo(!demoMode);
-        else if(t.y>=162 && t.y<=397 && selected>=0) {
+        } else if(t.y>=162 && t.y<=397 && selected>=0) {
             pinned=!pinned; lastFocus=millis(); panelDirty=true;
-        } else if(t.y>=459 && t.y<606) {
-            int i=nearby[(t.y-459)/49];
+        } else if(x>=366 && t.y>=400 && t.y<447) {
+            movingOnly=!movingOnly; page=0; panelDirty=true;
+        } else if(t.y>=450 && t.y<576) {
+            int i=nearby[(t.y-450)/42];
             if(visible(i)) selectPlane(i);
+        } else if(t.y>=577 && t.y<620) {
+            if(x>=285 && x<=358 && page>0) --page;
+            if(x>=470 && x<=548 && page+1<pages) ++page;
+            panelDirty=true;
+        } else if(t.y>=623 && t.y<=660 && WiFi.isConnected()) {
+            showUpdateCode(); panelDirty=true;
         }
     } else if (t.x <= 110 && t.y >= Top+Side-45 && t.y < Top+Side+4) {
-        settings.range = settings.range == 60 ? 20 : settings.range + 20;
+        settings.range = settings.range == 60 ? 10 : settings.range == 10 ? 20 : settings.range + 20;
     } else {
         int closest=-1; float best=27;
         for(int i=0;i<count;i++) if(visible(i)) {
@@ -362,8 +415,9 @@ void renderTracker() {
     if(!ready || delta<90) return;
     lastFrame=now;
     updateOrientation();
-    if(cachedRange!=settings.range) { drawBase(); panelDirty=true; }
+    if(cachedRange!=settings.range) { page=0; drawBase(); panelDirty=true; }
     if(demoMode) demoPositions();
+    else predictPositions(now);
     if(!visible(selected)) { selected=-1; pinned=false; chooseNext(); }
     else if(!pinned && settings.cycle && now-lastFocus>=unsigned(settings.cycle)*1000) chooseNext();
     sweepAngle=fmodf(sweepAngle+std::min(delta,500UL)*.36f/settings.sweep,360.f);

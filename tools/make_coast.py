@@ -11,6 +11,7 @@ regions = [
     ("HND", "TOKYO  /  HANEDA", 35.5494, 139.7798),
     ("KIX", "OSAKA  /  KANSAI", 34.4347, 135.2440),
     ("OKA", "OKINAWA  /  NAHA", 26.1958, 127.6459),
+    ("CTS", "HOKKAIDO  /  CTS", 42.7752, 141.6923),
 ]
 
 
