@@ -25,7 +25,7 @@ bool allowed(const Settings &s) {
     return s.brightness >= 5 && s.brightness <= 100 &&
            (s.range == 20 || s.range == 40 || s.range == 60) &&
            (s.cycle == 0 || (s.cycle >= 5 && s.cycle <= 60)) &&
-           s.sweep >= 3 && s.sweep <= 20;
+           s.sweep >= 3 && s.sweep <= 20 && s.region < RegionCount;
 }
 
 void describe(JsonDocument &reply) {
@@ -35,6 +35,7 @@ void describe(JsonDocument &reply) {
     s["range"] = settings.range;
     s["cycle"] = settings.cycle;
     s["sweep"] = settings.sweep;
+    s["region"] = settings.region;
     reply["connected"] = WiFi.isConnected();
     if (WiFi.isConnected()) reply["ip"] = WiFi.localIP().toString();
     reply["configured"] = storedWifi;
@@ -62,14 +63,17 @@ const char *apply(JsonDocument &req, bool usb) {
     }
     if (strcmp(op, "save")) return "Unknown operation";
     auto s = req["settings"].as<JsonObjectConst>();
-    if (!s || s.size() != 4) return "Four display settings required";
+    const bool hasRegion = s["region"].is<uint8_t>();
+    if (!s || s.size() != (hasRegion ? 5 : 4)) return "Invalid display settings";
     for (auto key : {"brightness","range","cycle","sweep"})
         if (!s[key].is<uint8_t>()) return "Invalid setting";
-    Settings next{s["brightness"], s["range"], s["cycle"], s["sweep"]};
+    Settings next{s["brightness"], s["range"], s["cycle"], s["sweep"], s["region"] | settings.region};
     if (!allowed(next)) return "Setting outside range";
     if (memcmp(&next, &settings, sizeof(next))) {
         if (prefs.putBytes("display", &next, sizeof(next)) != sizeof(next)) return "Save failed";
+        const bool regionChanged = next.region != settings.region;
         settings = next;
+        if (regionChanged) onRegionChanged();
         M5.Display.setBrightness(settings.brightness * 255 / 100);
     }
     return nullptr;
@@ -101,8 +105,10 @@ bool wifiConfigured() { return storedWifi || WiFi.isConnected(); }
 void configureDevice() {
     prefs.begin("flight-radar", false);
     Settings saved;
-    if (prefs.getBytesLength("display") == sizeof(saved) &&
-        prefs.getBytes("display", &saved, sizeof(saved)) == sizeof(saved) && allowed(saved))
+    // 旧版は地域を含まない先頭4バイト。地域は初期値の羽田を使う。
+    size_t length = prefs.getBytesLength("display");
+    if ((length == sizeof(saved) || length == offsetof(Settings, region)) &&
+        prefs.getBytes("display", &saved, length) == length && allowed(saved))
         settings = saved;
     storedWifi = prefs.getBytesLength("station") == sizeof(station) &&
         prefs.getBytes("station", &station, sizeof(station)) == sizeof(station) && station.ssid[0];

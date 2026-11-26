@@ -7,7 +7,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@RopoTama">
 <meta name="twitter:title" content="Tab5 Flight Tracker | USB設定">
-<meta name="twitter:description" content="M5Stack Tab5で羽田周辺を飛ぶ飛行機を眺めよう。Wi-Fi接続先やレーダー表示をUSBで設定できます。">
+<meta name="twitter:description" content="羽田・関西・那覇の空をM5Stack Tab5で眺めよう。Wi-Fi接続先やレーダーの地域をUSBで設定できます。">
 <meta name="twitter:image" content="https://ropo.github.io/Tab5FlightTracker/ropo-flight.jpg">
 <meta name="twitter:image:alt" content="卓上のTab5に映った機影を見つけて、窓の外の旅客機を指さすろぽ">
 <style>
@@ -27,7 +27,7 @@ footer a:hover,footer a:focus-visible{text-decoration:underline;color:#74e3cf}
 <header>
 <h1>Tab5 Flight Tracker</h1>
 <img class="cover" src="ropo-flight.jpg" width="1200" height="480" alt="卓上のTab5に映った機影を見つけて、窓の外の旅客機を指さすろぽ">
-<p>「あの飛行機、どの便かにゃ？」羽田周辺の空をTab5で眺めて、気になる機影をタップすると、便のコールサインや高度がわかります。</p>
+<p>「あの飛行機、どの便かにゃ？」東京・大阪・沖縄の空をTab5で眺めて、気になる機影をタップすると、便のコールサインや高度がわかります。</p>
 </header>
 <div id="connection"></div>
 <button type="button" id="connect" hidden>USBで接続</button>
@@ -36,6 +36,7 @@ footer a:hover,footer a:focus-visible{text-decoration:underline;color:#74e3cf}
 <fieldset id="controls" disabled>
 <section><h2>レーダー表示</h2>
 <form id="displayForm">
+<label>表示地域<select id="region" disabled><option value="0">東京（羽田空港）</option><option value="1">大阪（関西国際空港）</option><option value="2">沖縄（那覇空港）</option></select></label>
 <label>明るさ <output id="percent"></output><input id="brightness" type="range" min="5" max="100"></label>
 <label>表示半径<select id="range"><option value="20">20 NM（約37 km）</option><option value="40">40 NM（約74 km）</option><option value="60">60 NM（約111 km）</option></select></label>
 <label>注目機の自動切替（秒）<input id="cycle" type="number" min="0" max="60" required></label><small>0で停止、5〜60秒で切り替えます。</small>
@@ -67,6 +68,8 @@ function network(r) {
 function load(r) {
   network(r);
   for (const k of keys) el(k).value = r.settings[k];
+  el('region').disabled = r.settings.region === undefined;
+  el('region').value = r.settings.region ?? 0;
   el('percent').value = el('brightness').value + '%';
   el('controls').disabled = false;
 }
@@ -136,6 +139,7 @@ el('brightness').oninput = () => el('percent').value = el('brightness').value + 
 el('displayForm').onsubmit = async e => {
   e.preventDefault();
   const s = Object.fromEntries(keys.map(k => [k,Number(el(k).value)]));
+  if (!el('region').disabled) s.region = Number(el('region').value);
   if (s.cycle > 0 && s.cycle < 5) return note('自動切替は0または5〜60秒で指定してください');
   try { load(await request({op:'save',settings:s})); note('表示設定を保存しました'); }
   catch (e) { note(e.message); }

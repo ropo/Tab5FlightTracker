@@ -28,7 +28,14 @@ constexpr Place places[] = {
     {"Yokosuka",35.282,139.672,false},{"Tateyama",34.996,139.870,false},
     {"Saitama",35.861,139.646,false},{"Tsukuba",36.083,140.112,false},
     {"Odawara",35.256,139.155,false},{"Oshima",34.783,139.383,false},
-    {"NRT",35.772,140.393,true},{"HND",CenterLat,CenterLon,true}
+    {"NRT",35.772,140.393,true},
+    {"OSAKA",34.694,135.502,false},{"Kobe",34.690,135.196,false},
+    {"Wakayama",34.230,135.171,false},{"Nara",34.685,135.805,false},
+    {"Awaji",34.435,134.915,false},{"Kyoto",35.011,135.768,false},
+    {"ITM",34.785,135.438,true},{"UKB",34.633,135.224,true},
+    {"Ginowan",26.281,127.778,false},{"Nago",26.591,127.978,false},
+    {"Motobu",26.658,127.902,false},{"Itoman",26.124,127.665,false},
+    {"Tokashiki",26.197,127.364,false},{"UEO",26.363,126.714,true}
 };
 
 void textAt(M5Canvas &canvas, int x, int y, const String &s, uint32_t color, int size=1, bool large=false) {
@@ -46,15 +53,16 @@ bool stale() { return !demoMode && observed && difftime(time(nullptr),observed) 
 
 void drawBase() {
     cachedRange = settings.range;
+    const auto &region = regions[settings.region];
     base.fillScreen(Bg);
     base.fillCircle(C,C,R,Sea);
     for (int dy = -R; dy <= R; ++dy) {
         int row = std::clamp(int((.5f + dy * settings.range / (120.f * R)) * CoastSize),0,CoastSize-1);
         int dx = int(sqrtf(R*R - dy*dy));
-        for (unsigned j=CoastRows[row]; j<CoastRows[row+1]; j+=2) {
+        for (unsigned j=region.rows[row]; j<region.rows[row+1]; j+=2) {
             const float factor = 120.f * R / (CoastSize * settings.range);
-            int a = C + lroundf((CoastSpans[j] - CoastSize/2) * factor);
-            int b = C + lroundf((CoastSpans[j+1] - CoastSize/2) * factor);
+            int a = C + lroundf((region.spans[j] - CoastSize/2) * factor);
+            int b = C + lroundf((region.spans[j+1] - CoastSize/2) * factor);
             int left = std::max(C-dx,a), right = std::min(C+dx,b);
             if (left >= right) continue;
             base.drawFastHLine(left,C+dy,right-left,Land);
@@ -72,13 +80,15 @@ void drawBase() {
                       deg%30==0 ? Cyan : Grid);
     }
     for (auto &place : places) {
-        Point p = projectPosition(place.lat,place.lon);
+        Point p = projectPosition(region,place.lat,place.lon);
         int x=px(p), y=py(p);
         if (hypotf(x-C,y-C)>R-14) continue;
         base.fillCircle(x,y,place.airport ? 3 : 2,place.airport ? Gold : Dim);
         int width = strlen(place.label)*8;
         if (hypotf(x+width-C,y-C) < R-8) textAt(base,x+5,y+2,place.label,place.airport ? Gold : Dim);
     }
+    base.fillCircle(C,C,3,Gold);
+    textAt(base,C+5,C+2,region.airport,Gold);
     textAt(base,C-6,4,"N",Ink);
     textAt(base,C-5,Side-22,"S",Dim);
     textAt(base,8,C-8,"W",Dim);
@@ -179,7 +189,7 @@ String value(float n) { return isfinite(n) ? String(lroundf(n)) : String("--"); 
 void drawPanel() {
     auto &p=panel;
     p.fillScreen(Bg);
-    textAt(p,0,18,"TOKYO  /  HANEDA",Cyan,1,true);
+    textAt(p,0,18,regions[settings.region].title,Cyan,1,true);
     time_t now=time(nullptr);
     char clockText[12]="--:--";
     if (now>1700000000) { struct tm tm; localtime_r(&now,&tm); strftime(clockText,sizeof(clockText),"%H:%M",&tm); }
@@ -249,6 +259,17 @@ void setDemo(bool enabled) {
     count=enabled ? 0 : liveCount;
     selected=-1; pinned=false;
     panelDirty=true;
+}
+
+void clearRegionTraffic() {
+    liveCount = count = 0;
+    observed = 0;
+    selected = -1;
+    pinned = false;
+    std::fill(std::begin(nearby),std::end(nearby),-1);
+    cachedRange = 0;
+    panelDirty = true;
+    setFeedStatus("Waiting for ADS-B");
 }
 
 void acceptFeed(const Feed &data) {

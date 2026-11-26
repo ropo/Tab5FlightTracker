@@ -4,9 +4,9 @@
 #include <esp_http_client.h>
 #include <algorithm>
 
-Point projectPosition(double lat, double lon) {
-    return {float((lon - CenterLon) * 60 * cos(CenterLat * DEG_TO_RAD)),
-            float((lat - CenterLat) * 60)};
+Point projectPosition(const Region &region, double lat, double lon) {
+    return {float((lon - region.lon) * 60 * cos(region.lat * DEG_TO_RAD)),
+            float((lat - region.lat) * 60)};
 }
 
 namespace {
@@ -50,7 +50,7 @@ float distance2(const Aircraft &a) {
 const char *parseBody(Body &body) {
     JsonDocument filter, doc;
     filter["now"] = true;
-    for (auto key : {"hex","flight","t","lat","lon","alt_baro","gs","track","seen_pos"})
+    for (auto key : {"hex","flight","t","category","lat","lon","alt_baro","gs","track","seen_pos"})
         filter["ac"][0][key] = true;
     auto err = deserializeJson(doc, body.data, body.used, DeserializationOption::Filter(filter));
     if (err || !doc["ac"].is<JsonArray>() || !doc["now"].is<double>()) return "Invalid feed";
@@ -60,8 +60,12 @@ const char *parseBody(Body &body) {
     for (JsonObject a : doc["ac"].as<JsonArray>()) {
         if (!a["lat"].is<double>() || !a["lon"].is<double>() || !a["hex"].is<const char *>() ||
             (a["seen_pos"] | 0.0) > 90) continue;
+        const char *category = a["category"] | "";
+        // C1～C5は地上車両・障害物。駐機中の航空機は表示する。
+        if (category[0] == 'C' && category[1] >= '1' && category[1] <= '5' && !category[2])
+            continue;
         Aircraft p;
-        p.pos = projectPosition(a["lat"], a["lon"]);
+        p.pos = projectPosition(regions[report.region], a["lat"], a["lon"]);
         if (distance2(p) > 60.5f * 60.5f) continue;
         strlcpy(p.hex, a["hex"], sizeof(p.hex));
         String call = a["flight"] | "";
@@ -89,7 +93,10 @@ const char *download() {
     Body body{static_cast<char *>(ps_malloc(BodyLimit))};
     if (!body.data) return "Feed memory unavailable";
     esp_http_client_config_t cfg{};
-    cfg.url = "https://api.adsb.lol/v2/point/35.5494/139.7798/60";
+    const auto &region = regions[report.region];
+    char url[96];
+    snprintf(url, sizeof(url), "https://api.adsb.lol/v2/point/%.4f/%.4f/60", region.lat, region.lon);
+    cfg.url = url;
     cfg.crt_bundle_attach = esp_crt_bundle_attach;
     cfg.timeout_ms = 12000;
     cfg.event_handler = onHttp;
@@ -118,7 +125,9 @@ const char *download() {
 
 void fetchLoop(void *) {
     for (;;) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        uint32_t region;
+        xTaskNotifyWait(0, UINT32_MAX, &region, portMAX_DELAY);
+        report.region = region;
         report.count = 0;
         report.http = 0;
         report.observed = 0;
@@ -135,10 +144,10 @@ void startFeed() {
     if (completed) xTaskCreate(fetchLoop, "flight-feed", 16384, nullptr, 1, &worker);
 }
 
-bool requestFeed() {
+bool requestFeed(uint8_t region) {
     if (!worker || pending) return false;
     pending = true;
-    xTaskNotifyGive(worker);
+    xTaskNotify(worker, region, eSetValueWithOverwrite);
     return true;
 }
 

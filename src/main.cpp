@@ -3,8 +3,13 @@
 #include <WiFi.h>
 
 namespace {
-bool initialDemo, fetching, attempted;
+bool initialDemo, fetching, attempted, rateLimited;
 unsigned long lastRequest, waitMs = PollSeconds * 1000;
+}
+
+void onRegionChanged() {
+    clearRegionTraffic();
+    if (!rateLimited) attempted = false;
 }
 
 void setup() {
@@ -29,8 +34,12 @@ void loop() {
     const Feed *result;
     if (takeFeed(result)) {
         fetching = false;
-        if (!result->error[0]) acceptFeed(*result);
-        else setFeedStatus(result->error);
+        rateLimited = result->http == 429 || result->retryAfter > 0;
+        if (rateLimited) { attempted = true; lastRequest = millis(); }
+        if (result->region == settings.region) {
+            if (!result->error[0]) acceptFeed(*result);
+            else setFeedStatus(result->error);
+        } else if (rateLimited) setFeedStatus(result->error);
         waitMs = 1000UL * std::max(PollSeconds, result->retryAfter);
     }
     if (!demoMode && !fetching) {
@@ -39,7 +48,7 @@ void loop() {
         else if (!attempted || millis() - lastRequest >= waitMs) {
             attempted = true;
             lastRequest = millis();
-            fetching = requestFeed();
+            fetching = requestFeed(settings.region);
             setFeedStatus(fetching ? "Receiving ADS-B" : "Feed worker unavailable");
         }
     }
