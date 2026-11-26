@@ -12,7 +12,7 @@ struct Region {
 extern const Region regions[RegionCount];
 constexpr int MaxAircraft = 96;
 constexpr unsigned PollSeconds = 180;
-constexpr char FirmwareVersion[] = "2.0";
+constexpr char FirmwareVersion[] = "2.1";
 
 struct Point { float east, north; }; // 選択中の空港を原点とした海里
 Point projectPosition(const Region &region, double lat, double lon);

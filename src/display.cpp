@@ -157,16 +157,17 @@ void drawAircraft(int i) {
     const auto &a=planes[i];
     int x=px(a.pos), y=py(a.pos);
     bool focus=i==selected;
+    const uint32_t trailColor = focus ? Gold : Grid;
     uint32_t color=focus ? Gold : (stale() ? Dim : Cyan);
     int lastX=x, lastY=y;
     if (!demoMode && hypotf(a.sample.east,a.sample.north) <= settings.range) {
         lastX=px(a.sample); lastY=py(a.sample);
-        scope.drawLine(lastX,lastY,x,y,Grid);
+        scope.drawLine(lastX,lastY,x,y,trailColor);
     }
     for (int n=a.trailCount-1;n>=0;n--) {
         int tx=px(a.trail[n]),ty=py(a.trail[n]);
         if (hypotf(tx-C,ty-C)>R) break;
-        scope.drawLine(lastX,lastY,tx,ty,focus ? 0xa18b5a : Grid);
+        scope.drawLine(lastX,lastY,tx,ty,trailColor);
         scope.fillCircle(tx,ty,2,focus ? Gold : Dim);
         lastX=tx; lastY=ty;
     }
@@ -210,6 +211,62 @@ void drawScope() {
 }
 
 String value(float n) { return isfinite(n) ? String(lroundf(n)) : String("--"); }
+
+int batteryPercent = -1;
+bool batteryCharging;
+
+void sampleBattery(uint32_t now) {
+    static uint32_t lastSample, lastProbe;
+    static bool probing, probed;
+    if (now - lastSample < 1000) return;
+    lastSample = now;
+
+    const int mv = M5.Power.getBatteryVoltage();
+    const int ma = M5.Power.getBatteryCurrent();
+    const bool packVoltage = mv >= 5500 && mv <= 8600;
+    // 空の端子でも充電器が満充電相当の電圧を出す。起動時と電流が小さい時に
+    // 一時的に充電を休止し、端子電圧が落ち着いてから装着の有無を確認する。
+    if (probing) {
+        if (now - lastProbe < 5000) return;
+        M5.Power.setBatteryCharge(true);
+        probing = false;
+        probed = true;
+    } else if (!probed || (packVoltage && now - lastProbe >= 30000 &&
+                          (batteryPercent < 0 || abs(ma) <= 10))) {
+        M5.Power.setBatteryCharge(false);
+        lastProbe = now;
+        probing = true;
+        return;
+    } else if (batteryPercent < 0) {
+        if (!packVoltage) lastProbe = now - 30000; // 次の装着候補をすぐ再確認する。
+        return;
+    }
+    if (!packVoltage) {
+        batteryPercent = -1;
+        batteryCharging = false;
+        return;
+    }
+    // 1% = 16 mV。境界にヒステリシスを持たせ、満充電付近の往復も抑える。
+    const int level = std::clamp((mv - 6600 + 8) / 16, 0, 100);
+    if (batteryPercent < 0 || mv >= 8200 || abs(mv - (6600 + batteryPercent * 16)) >= 24)
+        batteryPercent = level;
+    batteryCharging = ma > 10;
+}
+
+void drawBattery() {
+    if (batteryPercent < 0) return;
+    constexpr int x = 448, y = 665;
+    const uint32_t color = batteryCharging ? Cyan : Ink;
+    if (batteryCharging) {
+        panel.fillTriangle(x-9,y-3,x-18,y+9,x-10,y+9,Cyan);
+        panel.fillTriangle(x-15,y+6,x-7,y+6,x-16,y+19,Cyan);
+    }
+    panel.drawRoundRect(x,y,32,16,3,color);
+    panel.fillRect(x+32,y+5,3,6,color);
+    const int fill = (26*batteryPercent+50)/100;
+    if (fill) panel.fillRect(x+3,y+3,fill,10,color);
+    textAt(panel,x+42,y-1,String(batteryPercent)+"%",color);
+}
 
 void drawPanel() {
     auto &p=panel;
@@ -280,6 +337,7 @@ void drawPanel() {
            WiFi.isConnected() ? String("Settings   http://")+WiFi.localIP().toString()+"   /   OTA code >" :
            "USB setup   /   Open web/settings.html",Ink);
     textAt(p,0,664,demoMode ? "DEMO DATA    /    Natural Earth" : "adsb.lol  (ODbL)    /    Natural Earth",Dim);
+    drawBattery();
     p.pushSprite(PanelX,0);
 }
 
@@ -415,6 +473,7 @@ void renderTracker() {
     uint32_t now=millis(), delta=now-lastFrame;
     if(!ready || delta<90) return;
     lastFrame=now;
+    sampleBattery(now);
     updateOrientation();
     if(cachedRange!=settings.range) { page=0; drawBase(); panelDirty=true; }
     if(demoMode) demoPositions();
@@ -436,4 +495,8 @@ void describeRadar(JsonObject out) {
     out["aircraft"]=count;
     out["observed"]=demoMode ? 0 : observed;
     out["frameMs"]=lastFrame;
+    if (batteryPercent >= 0) {
+        out["batteryPercent"]=batteryPercent;
+        out["batteryCharging"]=batteryCharging;
+    }
 }
