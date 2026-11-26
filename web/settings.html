@@ -7,49 +7,73 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@RopoTama">
 <meta name="twitter:title" content="Tab5 Flight Tracker | USB設定">
-<meta name="twitter:description" content="羽田・関西・那覇の空をM5Stack Tab5で眺めよう。Wi-Fi接続先やレーダーの地域をUSBで設定できます。">
+<meta name="twitter:description" content="羽田・関西・那覇・新千歳の空をM5Stack Tab5で眺めよう。Wi-Fiやレーダーの設定はこちら。">
 <meta name="twitter:image" content="https://ropo.github.io/Tab5FlightTracker/ropo-flight.jpg">
 <meta name="twitter:image:alt" content="卓上のTab5に映った機影を見つけて、窓の外の旅客機を指さすろぽ">
 <style>
-:root{color-scheme:dark;font:16px/1.65 "Segoe UI",sans-serif;color:#e2f1f3;background:#0b151d}
-body{max-width:38rem;margin:auto;padding:2rem 1rem}h1{font-size:1.7rem;line-height:1.2}h2{font-size:1.12rem;color:#6de5cf}
-section{border-top:1px solid #354852;padding:1rem 0}label{display:block;margin:.6rem 0}
-input,select,button{box-sizing:border-box;font:inherit;padding:.45rem .7rem;border:1px solid #47606a;border-radius:5px;background:#152630;color:inherit}
-input,select{width:100%}button{margin-top:.5rem;cursor:pointer;color:#092026;background:#74e3cf;font-weight:650}
-button:disabled{opacity:.45}fieldset{padding:0;border:0;margin:0}small,output{color:#afc4cb}a{color:#74e3cf}
-.cover{display:block;width:100%;height:auto;border-radius:8px}
-header p{margin:.75rem 0 1.25rem;color:#c5d9db}
-footer{margin-top:1rem;border-top:1px solid #354852;padding-top:.8rem;text-align:right}
-footer a{display:inline-flex;align-items:center;gap:.5rem;color:#c5d9db;text-decoration:none}
-footer a:hover,footer a:focus-visible{text-decoration:underline;color:#74e3cf}
+/* Hallmark · macrostructure: illustrated masthead and instrument sheet · tone: editorial */
+:root{color-scheme:light;--paper:#f7f4eb;--ink:#162d35;--muted:#455f61;--rule:#a5aea5;--signal:#b14026;--field:#fffdf6;--teal:#14655f;--sans:"Segoe UI","Yu Gothic UI",sans-serif;--mono:Consolas,"Courier New",monospace;font:16px/1.65 var(--sans);background:var(--paper);color:var(--ink)}
+*{box-sizing:border-box}html,body{overflow-x:clip}body{max-width:78rem;margin:auto;padding:clamp(12px,3vw,44px)}[hidden]{display:none!important}
+header{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);border-block:4px solid var(--ink);align-items:center}
+.mast{padding:24px clamp(12px,2vw,40px) 24px 0}.mast p{margin:18px 0 0;max-width:32em;color:var(--muted)}
+h1{margin:0;font:bold clamp(2.6rem,5.25vw,5.1rem)/.94 var(--sans);letter-spacing:-.065em;overflow-wrap:anywhere}h1 span{display:block;color:var(--signal)}
+.cover{display:block;width:100%;height:100%;min-height:180px;object-fit:cover}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.15fr);gap:clamp(20px,5vw,80px);margin:36px 0}
+aside{align-self:start;position:sticky;top:16px;border-top:3px solid var(--signal);padding-top:12px}
+h2{font-size:1.25rem;margin:0 0 12px;line-height:1.3}#status{font-weight:600;color:var(--signal);overflow-wrap:anywhere}#connection{margin:.4rem 0;color:var(--muted)}
+fieldset{padding:0;border:0;margin:0;min-width:0}section{padding:16px 0 28px;border-top:2px solid var(--ink)}
+form{display:grid;gap:12px;min-width:0}.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}
+label{display:grid;gap:4px;font-size:.93rem;font-weight:650}label small,small{display:block;font-weight:400;line-height:1.55;color:var(--muted)}
+input,select,button{font:inherit;min-width:0;border-radius:2px}input,select{width:100%;padding:9px 10px;border:1px solid var(--rule);background:var(--field);color:var(--ink)}
+input[type=range]{accent-color:var(--teal);padding:4px 0}output{font-family:var(--mono);color:var(--teal)}
+button{justify-self:start;padding:8px 16px;border:1px solid var(--ink);background:var(--ink);color:var(--field);cursor:pointer;font-weight:650}
+button:hover:enabled{background:var(--teal)}button:disabled{opacity:.5;cursor:default}:focus-visible{outline:3px solid var(--signal);outline-offset:2px}
+button.secondary{background:var(--paper);color:var(--ink)}button.secondary:hover:enabled{color:var(--field)}a{color:var(--teal);text-underline-offset:.2em}
+footer{border-top:2px solid var(--ink);padding:16px 0;display:flex;justify-content:flex-end;gap:24px}footer a{display:inline-flex;align-items:center;gap:8px;font:600 .9rem var(--mono);text-decoration:none}footer a:hover{text-decoration:underline}
+@media(max-width:760px){header,main{grid-template-columns:minmax(0,1fr)}.mast{padding:20px 0}h1 span{display:inline}.cover{height:auto;min-height:0}main{margin:22px 0;gap:20px}aside{position:static}}
+@media(max-width:480px){.fields{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
 <header>
-<h1>Tab5 Flight Tracker</h1>
+<div class="mast"><h1>Tab5 <span>Flight Tracker</span></h1>
+<p>「あの飛行機、どの便かにゃ？」<br>机の上のレーダーで、空港のまわりを飛ぶ機体を眺めよう。</p></div>
 <img class="cover" src="ropo-flight.jpg" width="1200" height="480" alt="卓上のTab5に映った機影を見つけて、窓の外の旅客機を指さすろぽ">
-<p>「あの飛行機、どの便かにゃ？」東京・大阪・沖縄の空をTab5で眺めて、気になる機影をタップすると、便のコールサインや高度がわかります。</p>
 </header>
+<main><aside><h2>本体との接続</h2>
 <div id="connection"></div>
+<a id="lan" hidden target="_blank" rel="noopener noreferrer">LAN設定・ファーム更新を開く</a>
+<button type="button" class="secondary" id="usbCode" hidden>更新コードを発行</button>
 <button type="button" id="connect" hidden>USBで接続</button>
 <button type="button" id="disconnect" hidden>USBを切断</button>
 <p role="status" id="status"></p>
+</aside>
 <fieldset id="controls" disabled>
 <section><h2>レーダー表示</h2>
 <form id="displayForm">
-<label>表示地域<select id="region" disabled><option value="0">東京（羽田空港）</option><option value="1">大阪（関西国際空港）</option><option value="2">沖縄（那覇空港）</option></select></label>
-<label>明るさ <output id="percent"></output><input id="brightness" type="range" min="5" max="100"></label>
-<label>表示半径<select id="range"><option value="20">20 NM（約37 km）</option><option value="40">40 NM（約74 km）</option><option value="60">60 NM（約111 km）</option></select></label>
+<div class="fields"><label>表示地域<select id="region" disabled><option value="0">東京（羽田空港）</option><option value="1">大阪（関西国際空港）</option><option value="2">沖縄（那覇空港）</option><option value="3">北海道（新千歳空港）</option></select></label>
+<label>表示半径<select id="range"><option value="10">10 NM（約19 km）</option><option value="20">20 NM（約37 km）</option><option value="40">40 NM（約74 km）</option><option value="60">60 NM（約111 km）</option></select></label></div>
+<label><span>明るさ　<output id="percent"></output></span><input id="brightness" type="range" min="5" max="100"></label>
 <label>注目機の自動切替（秒）<input id="cycle" type="number" min="0" max="60" required></label><small>0で停止、5〜60秒で切り替えます。</small>
 <label>レーダーが一周する時間（秒）<input id="sweep" type="number" min="3" max="20" required></label>
 <button>表示設定を保存</button></form></section>
+<section id="feedSection"><h2>航空データ</h2><form id="feedForm" autocomplete="off">
+<div class="fields"><label>adsb.lol APIキー<input id="apiKey" type="password" maxlength="160" autocomplete="new-password"></label>
+<label>更新間隔（秒）<input id="seconds" type="number" min="10" max="86400" step="1" value="180" required></label></div>
+<small id="feedState">キーが有効になると10秒から指定できます。公開枠は180秒間隔です。</small>
+<div><button>取得設定を保存</button> <button class="secondary" type="button" id="removeKey" hidden>キーを削除</button></div></form></section>
 <section id="wifi" hidden><h2>Wi-Fi 接続先</h2>
 <form id="wifiForm" autocomplete="off">
 <label>SSID<input id="ssid" required maxlength="32" autocapitalize="off" spellcheck="false"></label>
 <label>パスワード<input id="password" type="password" maxlength="63" autocomplete="new-password"></label>
 <small>保存済みのSSIDを表示します。接続先を再登録するときはパスワードを入力してください。2.4 GHz対応。オープンネットワークでは空欄にします。</small><br>
 <button>Wi-Fiを保存して接続</button></form></section>
-</fieldset>
-<footer><a href="https://x.com/ropotama" target="_blank" rel="noopener noreferrer">
+<section id="firmware" hidden><h2>ファームウェア更新</h2>
+<form id="updateForm"><small>Tab5 Flight Tracker用のBINを選び、本体の「OTA code」をタップしてください。更新後は設定を保持して再起動します。</small>
+<label>ファームファイル（.bin）<input id="binary" type="file" accept=".bin" required></label>
+<label>本体に表示された6桁<input id="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="off"></label>
+<button>ファームを書き込む</button><output id="uploadNote" aria-live="polite"></output></form></section>
+</fieldset></main>
+<footer><a href="https://github.com/ropo/Tab5FlightTracker" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="https://x.com/ropotama" target="_blank" rel="noopener noreferrer">
 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"/></svg>
 2026 @RopoTama</a></footer>
 <script>
@@ -62,14 +86,31 @@ let port, reader, readTask, writeTask, pending, busy = false;
 const encoder = new TextEncoder();
 function note(text) { el('status').textContent = text; }
 function network(r) {
-  el('connection').textContent = usb ? (r.connected ? 'USB 接続中　LAN設定画面　http://' + r.ip + '/' :
+  el('connection').textContent = usb ? (r.connected ? 'USB 接続中　/　' + r.ip :
     'USB 接続中　Wi-Fi 未接続') : 'Wi-Fi 経由で接続中';
+  const lan = el('lan');
+  lan.hidden = !(usb && r.connected && /^\d{1,3}(\.\d{1,3}){3}$/.test(r.ip));
+  if (!lan.hidden) lan.href = 'http://' + r.ip + '/';
+  el('usbCode').hidden = lan.hidden || !r.ota;
+  if (r.feed) {
+    const states = {empty:'未登録',pending:'次の受信で確認',valid:'有効',invalid:'無効・公開枠を使用'};
+    el('feedState').textContent = 'キー：' + states[r.feed.keyState] + '　/　現在の更新間隔：' +
+      r.feed.effectiveSeconds + '秒。利用枠に達した場合はサーバーの待ち時間を優先します。';
+    el('removeKey').hidden = r.feed.keyState === 'empty';
+    el('apiKey').placeholder = el('removeKey').hidden ? '任意' : '登録済み（変更時のみ入力）';
+    el('seconds').disabled = el('removeKey').hidden && !el('apiKey').value;
+  }
 }
 function load(r) {
   network(r);
   for (const k of keys) el(k).value = r.settings[k];
   el('region').disabled = r.settings.region === undefined;
   el('region').value = r.settings.region ?? 0;
+  el('region').options[3].disabled = (r.regions ?? 3) < 4;
+  el('range').options[0].disabled = !r.feed;
+  el('feedSection').hidden = !r.feed;
+  if (r.feed) el('seconds').value = r.feed.seconds;
+  el('firmware').hidden = usb || !r.ota;
   el('percent').value = el('brightness').value + '%';
   el('controls').disabled = false;
 }
@@ -99,6 +140,7 @@ async function readLines() {
     try { await port.close(); } catch {}
     port = null; el('controls').disabled = true; el('connect').disabled = false;
     el('ssid').value = ''; el('password').value = '';
+    el('apiKey').value = ''; el('lan').hidden = el('usbCode').hidden = true;
     el('disconnect').hidden = true;
     el('connection').textContent = 'USB 未接続';
   }
@@ -134,7 +176,11 @@ async function disconnect() {
   else if (port) { try { await port.close(); } catch {} port = null; }
 }
 el('disconnect').onclick = disconnect;
-window.addEventListener('pagehide', () => { el('password').value = ''; void disconnect(); });
+el('usbCode').onclick = async () => {
+  try { note('LAN更新用コード　' + (await request({op:'updateCode'})).updateCode + '（2分間有効）'); }
+  catch (e) { note(e.message); }
+};
+window.addEventListener('pagehide', () => { el('password').value = el('apiKey').value = ''; void disconnect(); });
 el('brightness').oninput = () => el('percent').value = el('brightness').value + '%';
 el('displayForm').onsubmit = async e => {
   e.preventDefault();
@@ -150,6 +196,45 @@ el('wifiForm').onsubmit = async e => {
     network(await request({op:'wifi',ssid:el('ssid').value,password:el('password').value}));
     el('password').value = ''; note('Wi-Fiを保存しました。接続状態を確認中です');
   } catch (e) { note(e.message); }
+};
+el('apiKey').oninput = () => {
+  el('seconds').disabled = el('removeKey').hidden && !el('apiKey').value;
+};
+async function saveFeed(remove) {
+  const message = {op:'feed',seconds:remove ? 180 : Number(el('seconds').value)};
+  if (remove || el('apiKey').value) message.key = remove ? '' : el('apiKey').value;
+  try {
+    const r = await request(message);
+    el('apiKey').value = '';
+    network(r); el('seconds').value = r.feed.seconds;
+    note(remove ? 'キーを削除しました' : '取得設定を保存しました');
+  } catch (e) { note(e.message); }
+}
+el('feedForm').onsubmit = e => { e.preventDefault(); void saveFeed(false); };
+el('removeKey').onclick = () => saveFeed(true);
+async function otaImage(file) {
+  const bytes = new Uint8Array(await file.slice(0,0x10000 + 36).arrayBuffer());
+  const offset = bytes[0] === 0xe9 ? 0 : 0x10000;
+  const view = new DataView(bytes.buffer);
+  if (bytes.length < offset + 36 || bytes[offset] !== 0xe9 ||
+      view.getUint16(offset+12,true) !== 0x12 || view.getUint32(offset+32,true) !== 0xabcd5432 ||
+      (offset && bytes[0x2000] !== 0xe9) || file.size-offset > 0x640000)
+    throw Error('Tab5 Flight TrackerのESP32-P4用BINを選んでください');
+  return file.slice(offset);
+}
+el('updateForm').onsubmit = async e => {
+  e.preventDefault();
+  const button = el('updateForm').querySelector('button'), message = el('uploadNote');
+  button.disabled = true;
+  try {
+    const image = await otaImage(el('binary').files[0]);
+    message.value = '書き込み中です。Tab5の電源を入れたままお待ちください。';
+    const r = await fetch('/firmware',{method:'POST',headers:{
+      'Content-Type':'application/octet-stream','X-Tab5-Code':el('code').value},body:image});
+    if (!r.ok) throw Error(r.status === 403 ? '本体をタップして、新しい確認コードでお試しください' : '書き込みに失敗しました。BINを確認してください');
+    el('updateForm').reset();
+    message.value = '書き込み完了。Tab5の再起動後にページを再読み込みしてください。';
+  } catch (e) { message.value = e.message; button.disabled = false; }
 };
 el('connect').onclick = async () => {
   el('connect').disabled = true;
@@ -182,6 +267,12 @@ if (usb) {
     if (!port || busy || el('controls').disabled) return;
     try { network(await request({op:'get'})); } catch(e) { note(e.message); }
   },5000);
-} else { request({op:'get'}).then(load).catch(e => note(e.message)); }
+} else {
+  request({op:'get'}).then(load).catch(e => note(e.message));
+  setInterval(async () => {
+    if (document.hidden || el('updateForm').querySelector('button').disabled) return;
+    try { network(await request({op:'get'})); } catch {}
+  },10000);
+}
 </script>
 </html>
