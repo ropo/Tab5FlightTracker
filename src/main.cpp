@@ -4,11 +4,12 @@
 
 namespace {
 bool initialDemo, fetching, attempted, rateLimited;
-unsigned long lastRequest, waitMs = PollSeconds * 1000;
+unsigned long lastRequest, lastRegionChange, waitMs = PollSeconds * 1000;
 }
 
 void onRegionChanged() {
     clearRegionTraffic();
+    lastRegionChange = millis();
     if (!rateLimited) attempted = false;
 }
 
@@ -45,7 +46,8 @@ void loop() {
     if (!demoMode && !fetching) {
         if (!WiFi.isConnected()) setFeedStatus(wifiConfigured() ? "Connecting to Wi-Fi" : "Set Wi-Fi via USB");
         else if (time(nullptr) < 1700000000) setFeedStatus("Synchronizing clock");
-        else if (!attempted || millis() - lastRequest >= waitMs) {
+        // 地域名を続けてタップしたときは、最後に選んだ地域だけを取得する。
+        else if (millis() - lastRegionChange >= 600 && (!attempted || millis() - lastRequest >= waitMs)) {
             attempted = true;
             lastRequest = millis();
             fetching = requestFeed(settings.region);

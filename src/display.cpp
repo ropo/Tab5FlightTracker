@@ -20,6 +20,7 @@ char statusText[64] = "Waiting for ADS-B";
 time_t observed;
 uint32_t lastFrame, lastPanel, lastFocus;
 float sweepAngle;
+uint8_t landscapeRotation, tiltSamples;
 const char *demoCalls[] = {"DEMO201","DEMO452","DEMO018","DEMO737","DEMO316","DEMO082","DEMO109","DEMO910"};
 struct Place { const char *label; float lat, lon; bool airport; };
 constexpr Place places[] = {
@@ -93,7 +94,8 @@ void drawBase() {
     textAt(base,C-5,Side-22,"S",Dim);
     textAt(base,8,C-8,"W",Dim);
     textAt(base,Side-20,C-8,"E",Dim);
-    textAt(base,16,Side-22,String(settings.range)+" NM",Cyan);
+    base.drawRoundRect(8,Side-37,94,34,8,Grid);
+    textAt(base,16,Side-29,String(settings.range)+" NM  >",Cyan);
 }
 
 void demoPositions() {
@@ -189,7 +191,9 @@ String value(float n) { return isfinite(n) ? String(lroundf(n)) : String("--"); 
 void drawPanel() {
     auto &p=panel;
     p.fillScreen(Bg);
-    textAt(p,0,18,regions[settings.region].title,Cyan,1,true);
+    p.drawRoundRect(0,6,285,44,8,Grid);
+    textAt(p,8,16,regions[settings.region].title,Cyan,1,true);
+    textAt(p,260,18,">",Cyan);
     time_t now=time(nullptr);
     char clockText[12]="--:--";
     if (now>1700000000) { struct tm tm; localtime_r(&now,&tm); strftime(clockText,sizeof(clockText),"%H:%M",&tm); }
@@ -235,11 +239,34 @@ void drawPanel() {
     textAt(p,0,664,demoMode ? "DEMO DATA    /    Natural Earth" : "adsb.lol  (ODbL)    /    Natural Earth",Dim);
     p.pushSprite(PanelX,0);
 }
+
+void updateOrientation() {
+    if (!M5.Imu.isEnabled() || !(M5.Imu.update() & m5::IMU_Class::sensor_mask_accel) ||
+        M5.Touch.getCount()) {
+        tiltSamples = 0;
+        return;
+    }
+    const auto a = M5.Imu.getImuData().accel;
+    const float g = sqrtf(a.x*a.x + a.y*a.y + a.z*a.z);
+    const bool flipped = M5.Display.getRotation() != landscapeRotation;
+    // 横画面の上下はIMUのX軸。±sin(35°)を越えるまで現在の向きを保持する。
+    const float opposite = flipped ? a.x : -a.x;
+    if (!(g > .8f && g < 1.2f && opposite >= .574f*g && opposite > fabsf(a.y))) {
+        tiltSamples = 0;
+        return;
+    }
+    if (++tiltSamples < 3) return;
+    tiltSamples = 0;
+    M5.Display.setRotation(M5.Display.getRotation() ^ 2);
+    M5.Display.fillScreen(Bg);
+    panelDirty = true;
+}
 }
 
 void initializeDisplay() {
     M5.Display.setRotation(3);
     if (M5.Display.width()<M5.Display.height()) M5.Display.setRotation(2);
+    landscapeRotation = M5.Display.getRotation();
     M5.Display.fillScreen(Bg);
     for (auto *s : {&base,&scope,&panel}) { s->setPsram(true); s->setColorDepth(16); }
     ready=base.createSprite(Side,Side) && scope.createSprite(Side,Side) && panel.createSprite(562,710);
@@ -308,13 +335,18 @@ void updateTouch() {
     if(!ready || !t.wasPressed()) return;
     if(t.x>=PanelX) {
         int x=t.x-PanelX;
-        if(x>=390 && t.y>=60 && t.y<=116) setDemo(!demoMode);
+        if(x<=290 && t.y<=55) {
+            settings.region = (settings.region + 1) % RegionCount;
+            onRegionChanged();
+        } else if(x>=390 && t.y>=60 && t.y<=116) setDemo(!demoMode);
         else if(t.y>=162 && t.y<=397 && selected>=0) {
             pinned=!pinned; lastFocus=millis(); panelDirty=true;
         } else if(t.y>=459 && t.y<606) {
             int i=nearby[(t.y-459)/49];
             if(visible(i)) selectPlane(i);
         }
+    } else if (t.x <= 110 && t.y >= Top+Side-45 && t.y < Top+Side+4) {
+        settings.range = settings.range == 60 ? 20 : settings.range + 20;
     } else {
         int closest=-1; float best=27;
         for(int i=0;i<count;i++) if(visible(i)) {
@@ -329,6 +361,7 @@ void renderTracker() {
     uint32_t now=millis(), delta=now-lastFrame;
     if(!ready || delta<90) return;
     lastFrame=now;
+    updateOrientation();
     if(cachedRange!=settings.range) { drawBase(); panelDirty=true; }
     if(demoMode) demoPositions();
     if(!visible(selected)) { selected=-1; pinned=false; chooseNext(); }
@@ -340,6 +373,8 @@ void renderTracker() {
 
 void describeRadar(JsonObject out) {
     out["displayReady"]=ready;
+    out["imuReady"]=M5.Imu.isEnabled();
+    out["rotation"]=M5.Display.getRotation();
     out["mode"]=demoMode ? "demo" : "live";
     out["status"]=demoMode ? "Simulated traffic" : statusText;
     out["aircraft"]=count;

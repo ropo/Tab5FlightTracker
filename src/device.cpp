@@ -12,6 +12,7 @@ Settings settings;
 
 namespace {
 Preferences prefs;
+Settings savedDisplay;
 WebServer server(80);
 struct Credentials { char ssid[33], pass[65]; };
 Credentials station{};
@@ -69,13 +70,14 @@ const char *apply(JsonDocument &req, bool usb) {
         if (!s[key].is<uint8_t>()) return "Invalid setting";
     Settings next{s["brightness"], s["range"], s["cycle"], s["sweep"], s["region"] | settings.region};
     if (!allowed(next)) return "Setting outside range";
-    if (memcmp(&next, &settings, sizeof(next))) {
+    if (memcmp(&next, &savedDisplay, sizeof(next))) {
         if (prefs.putBytes("display", &next, sizeof(next)) != sizeof(next)) return "Save failed";
-        const bool regionChanged = next.region != settings.region;
-        settings = next;
-        if (regionChanged) onRegionChanged();
-        M5.Display.setBrightness(settings.brightness * 255 / 100);
+        savedDisplay = next;
     }
+    const bool regionChanged = next.region != settings.region;
+    settings = next;
+    if (regionChanged) onRegionChanged();
+    M5.Display.setBrightness(settings.brightness * 255 / 100);
     return nullptr;
 }
 
@@ -110,6 +112,7 @@ void configureDevice() {
     if ((length == sizeof(saved) || length == offsetof(Settings, region)) &&
         prefs.getBytes("display", &saved, length) == length && allowed(saved))
         settings = saved;
+    savedDisplay = settings;
     storedWifi = prefs.getBytesLength("station") == sizeof(station) &&
         prefs.getBytes("station", &station, sizeof(station)) == sizeof(station) && station.ssid[0];
     M5.Display.setBrightness(settings.brightness * 255 / 100);
